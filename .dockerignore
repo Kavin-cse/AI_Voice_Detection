@@ -1,0 +1,12 @@
+.git
+.venv
+__pycache__
+*.pyc
+app/artifacts/*
+!app/artifacts/.gitkeep
+tests/
+test_*.py
+*.ps1
+FIXES_APPLIED.md
+SUBMISSION.md
+deploy/

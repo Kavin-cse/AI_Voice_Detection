@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>AI Voice Detection - Live Test</title>
+  <style>body{font-family:Arial,Helvetica,sans-serif;padding:20px}</style>
+</head>
+<body>
+  <h2>AI Voice Detection — Live Microphone Test</h2>
+  <p>Click <strong>Start</strong> to stream microphone audio to the server over WebSocket. When finished click <strong>Stop</strong>.</p>
+
+  <label>WebSocket URL: <input id="wsUrl" size="60"></label>
+  <div style="margin-top:8px">
+    <button id="start">Start</button>
+    <button id="stop" disabled>Stop</button>
+  </div>
+
+  <h3>Server Response</h3>
+  <pre id="log">Not connected</pre>
+
+  <script>
+  let ws;
+  let mr;
+  let mediaStream;
+
+  const log = (s) => { document.getElementById('log').textContent = s; };
+
+  function arrayBufferToBase64(buffer) {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+  }
+
+  document.getElementById('start').onclick = async () => {
+    // If wsUrl empty use same origin (works with ngrok)
+    let url = document.getElementById('wsUrl').value.trim();
+    if (!url) {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      url = proto + '//' + location.host + '/ws/voice?x_api_key=testkey';
+      document.getElementById('wsUrl').value = url;
+    }
+    if (!url) { alert('Set WebSocket URL'); return; }
+
+    ws = new WebSocket(url);
+    ws.binaryType = 'arraybuffer';
+
+    ws.onopen = () => { log('WebSocket open. Starting recording...'); };
+    ws.onmessage = (ev) => { try { log('Server: ' + (typeof ev.data === 'string' ? ev.data : JSON.stringify(JSON.parse(ev.data)))); } catch(e){ log('Server: ' + ev.data); } };
+    ws.onclose = () => { log('WebSocket closed'); };
+    ws.onerror = (e) => { log('WebSocket error: ' + e); };
+
+    // Get microphone
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Use MediaRecorder - browser may emit webm/opus blobs
+    mr = new MediaRecorder(mediaStream);
+
+    mr.ondataavailable = async (ev) => {
+      if (ev.data && ev.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
+        const arr = await ev.data.arrayBuffer();
+        const b64 = arrayBufferToBase64(arr);
+        ws.send(b64);
+      }
+    };
+
+    mr.start(1000); // timeslice 1s
+    document.getElementById('start').disabled = true;
+    document.getElementById('stop').disabled = false;
+  };
+
+  document.getElementById('stop').onclick = async () => {
+    if (mr && mr.state !== 'inactive') mr.stop();
+    // send END marker
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send('END');
+    if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); }
+    document.getElementById('start').disabled = false;
+    document.getElementById('stop').disabled = true;
+  };
+  </script>
+</body>
+</html>
